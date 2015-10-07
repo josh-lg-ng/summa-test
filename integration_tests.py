@@ -47,6 +47,7 @@ class SPAIntegrationTestCaseMixin(object):
         super(SPAIntegrationTestCaseMixin, cls).setUpClass()
         cls.start_static_server()
         cls.start_webdriver()
+        cls.poll_until_servers_up()
 
         # optionally run elementExplorer
         if ELEMENT_EXPLORER:
@@ -62,25 +63,32 @@ class SPAIntegrationTestCaseMixin(object):
     @classmethod
     def start_static_server(cls):
         with open('{}/divshot.log.txt'.format(cls.test_log_location), 'wb') as log_file:
-            cls.static_server_process = subprocess.Popen(cls.static_server_command, shell=True, stdout=log_file, preexec_fn=os.setsid)
-            cls.poll_until_static_server_up()
+            cls.static_server_process = subprocess.Popen(cls.static_server_command, shell=True,
+                                                         stdout=log_file, preexec_fn=os.setsid)
 
     @classmethod
     def start_webdriver(cls):
         with open('{}/webdriver.log.txt'.format(cls.test_log_location), 'wb') as log_file:
-            cls.webdriver = subprocess.Popen(['webdriver-manager', 'start'], stdout=log_file, stderr=log_file)
+            cls.webdriver = subprocess.Popen(['webdriver-manager', 'start'],
+                                             stdout=log_file, stderr=log_file)
 
     @classmethod
-    def poll_until_static_server_up(cls):
+    def poll_until_servers_up(cls):
         start = datetime.now()
+        servers_up = {cls.live_server_url: False,
+                      "http://localhost:4444/wd/hub": False}
         while (datetime.now() - start).seconds < POLLING_TIMEOUT:
-            try:
-                resp = requests.get(cls.live_server_url)
-            except requests.ConnectionError:
-                time.sleep(POLLING_INTERVAL)
-            else:
+            for url in servers_up:
+                try:
+                    resp = requests.get(url)
+                except requests.ConnectionError:
+                    time.sleep(POLLING_INTERVAL)
+                else:
+                    servers_up[url] = True
+            if all([up for url, up in servers_up.items()]):
                 return
-        raise TimeoutException("The static server didn't start within {} seconds".format(POLLING_TIMEOUT))
+        raise TimeoutException("The server(s) at {} didn't start within {} seconds".format(
+            [url for url, up in servers_up.items() if not up], POLLING_TIMEOUT))
 
     @classmethod
     def stop_static_server(cls):
@@ -125,7 +133,8 @@ def get_test_methods(test_class):
             dirs_from_env = dirs_from_env.replace(' ', '').split(',')
             for dir in dirs_from_env:
                 if not dir in dirs:
-                    raise Exception("Looks like you passed an invalid spec directory <{}>.  The available options are {}".format(dir, dirs))
+                    raise Exception("Looks like you passed an invalid spec directory <{}>. "
+                                    "The available options are {}".format(dir, dirs))
             print "Heads up: We're running only these specs (read from $TEST_SPEC_DIRS):"
             for dir in dirs_from_env:
                 print "- ", dir

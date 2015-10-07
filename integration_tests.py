@@ -1,3 +1,8 @@
+"""
+Based mostly on https://github.com/jpulec/django-protractor, with modifications to run
+multiple test cases, and handle a server process for the static SPA in addition to the API server.
+"""
+
 import os
 from datetime import datetime
 import requests
@@ -6,7 +11,6 @@ import subprocess
 import sys
 import time
 
-from protractor.test import ProtractorTestCaseMixin
 
 BASE_TEST_DIR = 'testing/e2e/'
 
@@ -24,11 +28,15 @@ if os.environ.get("ELEMENT_EXPLORER"):
     del os.environ['ELEMENT_EXPLORER']
 
 
-class SPAIntegrationTestCaseMixin(ProtractorTestCaseMixin):
-    specs = None  # set on each test method
+class SPAIntegrationTestCaseMixin(object):
     protractor_conf = 'testing/conf.js'
+    suite = None
+    specs = None
     live_server_url = 'http://localhost:{}/'.format(os.environ.get('STATIC_SERVER_PORT'))
     static_server_command = 'divshot s -p $STATIC_SERVER_PORT'
+    test_log_location = os.environ.get('TESTING_LOG_LOCATION', '.logs/testing')
+    if not os.path.exists(test_log_location):
+        os.makedirs(test_log_location)
 
     @classmethod
     def setUpClass(cls):
@@ -38,6 +46,7 @@ class SPAIntegrationTestCaseMixin(ProtractorTestCaseMixin):
         the beginning."""
         super(SPAIntegrationTestCaseMixin, cls).setUpClass()
         cls.start_static_server()
+        cls.start_webdriver()
 
         # optionally run elementExplorer
         if ELEMENT_EXPLORER:
@@ -46,15 +55,20 @@ class SPAIntegrationTestCaseMixin(ProtractorTestCaseMixin):
 
     @classmethod
     def tearDownClass(cls):
-        super(SPAIntegrationTestCaseMixin, cls).tearDownClass()
         cls.stop_static_server()
+        cls.webdriver.kill()
+        super(SPAIntegrationTestCaseMixin, cls).tearDownClass()
 
     @classmethod
     def start_static_server(cls):
-        static_server_log_location = os.environ.get('STATIC_SERVER_LOG_LOCATION', '.logs/testing')
-        log_file = open('{}/divshot.log.txt'.format(static_server_log_location), 'w')
-        cls.static_server_process = subprocess.Popen(cls.static_server_command, shell=True, stdout=log_file, preexec_fn=os.setsid)
-        cls.poll_until_static_server_up()
+        with open('{}/divshot.log.txt'.format(cls.test_log_location), 'wb') as log_file:
+            cls.static_server_process = subprocess.Popen(cls.static_server_command, shell=True, stdout=log_file, preexec_fn=os.setsid)
+            cls.poll_until_static_server_up()
+
+    @classmethod
+    def start_webdriver(cls):
+        with open('{}/webdriver.log.txt'.format(cls.test_log_location), 'wb') as log_file:
+            cls.webdriver = subprocess.Popen(['webdriver-manager', 'start'], stdout=log_file, stderr=log_file)
 
     @classmethod
     def poll_until_static_server_up(cls):
@@ -72,14 +86,7 @@ class SPAIntegrationTestCaseMixin(ProtractorTestCaseMixin):
     def stop_static_server(cls):
         os.killpg(cls.static_server_process.pid, signal.SIGTERM)
 
-    def test_run(self):
-        # override default test method, kinda janky.  needed because python picks up every method
-        # named test_<foo> as a test case.
-        pass
-
     def run_protractor(self):
-        # copy of self.test_run
-        # copied from https://github.com/jpulec/django-protractor/blob/master/protractor/test.py
         protractor_command = 'protractor {}'.format(self.protractor_conf)
         protractor_command += ' --baseUrl {}'.format(self.live_server_url)
         if self.specs:
@@ -99,13 +106,19 @@ class SPAIntegrationTestCaseMixin(ProtractorTestCaseMixin):
         self.specs = specs
         self.run_protractor()
 
+    def get_protractor_params(self):
+        """A hook for adding params that protractor will receive."""
+        return {
+            'live_server_url': self.live_server_url
+        }
+
 
 def discover_protractor_dirs():
     return os.listdir('./{}'.format(BASE_TEST_DIR))
 
 
 def get_test_methods(test_class):
-    if not ELEMENT_EXPLORER:
+    if not ELEMENT_EXPLORER:  # don't run tests if elementExplorer flag was passed
         dirs = discover_protractor_dirs()
         dirs_from_env = os.environ.get('TEST_SPEC_DIRS')  # comma separated list
         if dirs_from_env:

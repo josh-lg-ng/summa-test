@@ -55,13 +55,13 @@ class ProtractorTests(SPAIntegrationTestCaseMixin, StaticLiveServerTestCase):
 
     def get_protractor_params(self):
         """A hook for adding params that protractor will receive."""
-        params = {
-            'live_server_url': self.live_server_url,
+        params = super(ProtractorTests, self).get_protractor_params()
+        params.update({
             'user1username': "alice",
             'user2username': "bob",
             'user1password': "pass1",
             'user2password': "pass2",
-        }
+        })
         return params
 
 

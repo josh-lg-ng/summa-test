@@ -16,7 +16,7 @@ mkdir -p $STATIC_SERVER_LOG_LOCATION
 source $PREMIERE_ROOT/premiere/settings/utils/local_env_postactivate.sh
 # use real leadcloud
 export LEAD_CLOUD_URL=http://lead-cloud-staging.leadgenius.com/
-$PREMIERE_ROOT/premiere/manage.py test tests.test_ui --settings=integration_test_settings --nomigrations --noinput --verbosity 0
+$PREMIERE_ROOT/premiere/manage.py test testing --settings=premiere.settings.testing --nomigrations --noinput --verbosity 0
 exit_code=$?
 
 # give an informative exit code for CircleCI

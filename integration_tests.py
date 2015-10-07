@@ -1,9 +1,21 @@
 import os
+from datetime import datetime
+import requests
 import signal
 import subprocess
 import sys
+import time
 
 from protractor.test import ProtractorTestCaseMixin
+
+BASE_TEST_DIR = 'testing/e2e/'
+
+POLLING_TIMEOUT = 7
+POLLING_INTERVAL = .5
+
+
+class TimeoutException(Exception):
+    pass
 
 
 ELEMENT_EXPLORER = False
@@ -14,7 +26,7 @@ if os.environ.get("ELEMENT_EXPLORER"):
 
 class SPAIntegrationTestCaseMixin(ProtractorTestCaseMixin):
     specs = None  # set on each test method
-    protractor_conf = 'tests/conf.js'
+    protractor_conf = 'testing/conf.js'
     live_server_url = 'http://localhost:{}/'.format(os.environ.get('STATIC_SERVER_PORT'))
     static_server_command = 'divshot s -p $STATIC_SERVER_PORT'
 
@@ -32,7 +44,6 @@ class SPAIntegrationTestCaseMixin(ProtractorTestCaseMixin):
             print "Pausing for element explorer... "
             subprocess.call("protractor --elementExplorer", shell=True)
 
-
     @classmethod
     def tearDownClass(cls):
         super(SPAIntegrationTestCaseMixin, cls).tearDownClass()
@@ -40,8 +51,22 @@ class SPAIntegrationTestCaseMixin(ProtractorTestCaseMixin):
 
     @classmethod
     def start_static_server(cls):
-        log_file = open('{}/divshot.log.txt'.format(os.environ.get('STATIC_SERVER_LOG_LOCATION')), 'w')
+        static_server_log_location = os.environ.get('STATIC_SERVER_LOG_LOCATION', '.logs/testing')
+        log_file = open('{}/divshot.log.txt'.format(static_server_log_location), 'w')
         cls.static_server_process = subprocess.Popen(cls.static_server_command, shell=True, stdout=log_file, preexec_fn=os.setsid)
+        cls.poll_until_static_server_up()
+
+    @classmethod
+    def poll_until_static_server_up(cls):
+        start = datetime.now()
+        while (datetime.now() - start).seconds < POLLING_TIMEOUT:
+            try:
+                resp = requests.get(cls.live_server_url)
+            except requests.ConnectionError:
+                time.sleep(POLLING_INTERVAL)
+            else:
+                return
+        raise TimeoutException("The static server didn't start within {} seconds".format(POLLING_TIMEOUT))
 
     @classmethod
     def stop_static_server(cls):
@@ -76,7 +101,7 @@ class SPAIntegrationTestCaseMixin(ProtractorTestCaseMixin):
 
 
 def discover_protractor_dirs():
-    return os.listdir('./tests/e2e/')
+    return os.listdir('./{}'.format(BASE_TEST_DIR))
 
 
 def get_test_methods(test_class):
@@ -86,8 +111,8 @@ def get_test_methods(test_class):
         if dirs_from_env:
             dirs_from_env = dirs_from_env.replace(' ', '').split(',')
             for dir in dirs_from_env:
-                 if not dir in dirs:
-                     raise Exception("Looks like you passed an invalid spec directory <{}>.  The available options are {}".format(dir, dirs))
+                if not dir in dirs:
+                    raise Exception("Looks like you passed an invalid spec directory <{}>.  The available options are {}".format(dir, dirs))
             print "Heads up: We're running only these specs (read from $TEST_SPEC_DIRS):"
             for dir in dirs_from_env:
                 print "- ", dir
@@ -95,7 +120,7 @@ def get_test_methods(test_class):
 
         # Create one test method on the TestCase class for each directory of Protractor tests
         for dir in dirs:
-            specs = ['tests/e2e/{}/*.spec.js'.format(dir), ]
+            specs = ['{}{}/*.spec.js'.format(BASE_TEST_DIR, dir), ]
             def test_method(specs):
                 return lambda self: self.run_protractor_with_specs(specs)
             setattr(test_class, 'test_{}'.format(dir), test_method(specs))

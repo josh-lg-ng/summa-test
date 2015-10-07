@@ -5,6 +5,8 @@
 ### Quick start:
 
 #### Set up:
+- install protractor with `npm install protractor` (or better yet, add it to your SPA's `package.json`)
+- `webdriver-manager update --standalone`
 - `export PREMIERE_ROOT=<root_dir_of_Premiere_install>`
 - `export SUMMA_TEST_ROOT=<root_dir_of_this_install>`
 - `export PYTHONPATH=<root_dir_of_SPA_repo>:$SUMMA_TEST_ROOT:$PREMIERE_ROOT:$PREMIERE_ROOT/premiere`

@@ -16,6 +16,7 @@
 - Activate your Premiere virtualenv (you need all those dependencies to run the API server).
 
 #### Run tests:
+From `<root_dir_of_SPA_repo>/testing`:
 - `$SUMMA_TEST_ROOT/test.sh`
 
 ### How it works:
